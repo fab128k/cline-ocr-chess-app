@@ -4,29 +4,209 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chess Scoresheet OCR</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: inline-block;
+            width: 100px;
+            font-weight: bold;
+        }
+        input, select {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 250px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        pre {
+            background-color: #f8f8f8;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            white-space: pre-wrap;
+            margin-top: 20px;
+        }
+        .debug-section {
+            margin-top: 20px;
+            border-top: 1px solid #ddd;
+            padding-top: 20px;
+            display: none;
+        }
+        .toggle-debug {
+            background-color: #f8f8f8;
+            color: #333;
+            border: 1px solid #ddd;
+            margin-top: 10px;
+        }
+        .loading {
+            text-align: center;
+            margin: 20px 0;
+            display: none;
+        }
+        .error {
+            color: red;
+            font-weight: bold;
+        }
+    </style>
 </head>
 <body>
     <h1>Chess Scoresheet OCR</h1>
     <form id="uploadForm" enctype="multipart/form-data">
-        <input type="file" id="fileInput" name="file" accept="image/*" required>
+        <div class="form-group">
+            <label for="fileInput">Scoresheet:</label>
+            <input type="file" id="fileInput" name="file" accept="image/*" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="langSelect">Language:</label>
+            <select id="langSelect" name="lang">
+                <option value="eng">English</option>
+                <option value="ita">Italian</option>
+                <option value="eng+ita">English + Italian</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label for="eventInput">Event:</label>
+            <input type="text" id="eventInput" name="event" placeholder="Tournament name">
+        </div>
+        
+        <div class="form-group">
+            <label for="dateInput">Date:</label>
+            <input type="text" id="dateInput" name="date" placeholder="YYYY.MM.DD">
+        </div>
+        
+        <div class="form-group">
+            <label for="whiteInput">White:</label>
+            <input type="text" id="whiteInput" name="white" placeholder="White player name">
+        </div>
+        
+        <div class="form-group">
+            <label for="blackInput">Black:</label>
+            <input type="text" id="blackInput" name="black" placeholder="Black player name">
+        </div>
+        
+        <div class="form-group">
+            <label for="resultInput">Result:</label>
+            <select id="resultInput" name="result">
+                <option value="*">In progress</option>
+                <option value="1-0">White wins</option>
+                <option value="0-1">Black wins</option>
+                <option value="1/2-1/2">Draw</option>
+            </select>
+        </div>
+        
         <button type="submit">Upload and Process</button>
     </form>
+    
+    <div class="loading" id="loadingIndicator">
+        Processing your image... Please wait.
+    </div>
+    
+    <h2>PGN Output</h2>
     <pre id="pgnOutput"></pre>
+    
+    <button class="toggle-debug" id="toggleDebug">Show Debug Info</button>
+    
+    <div class="debug-section" id="debugSection">
+        <h3>Debug Information</h3>
+        <div>
+            <h4>Extracted Text</h4>
+            <pre id="extractedText"></pre>
+            
+            <h4>Cleaned Text</h4>
+            <pre id="cleanedText"></pre>
+            
+            <h4>Notation System Detected</h4>
+            <pre id="notationSystem"></pre>
+            
+            <h4>Parsed Moves</h4>
+            <pre id="parsedMoves"></pre>
+        </div>
+    </div>
 
     <script>
+        // Form submission handler
         document.getElementById('uploadForm').onsubmit = async function(event) {
             event.preventDefault();
-            const formData = new FormData();
-            const fileInput = document.getElementById('fileInput');
-            formData.append('file', fileInput.files[0]);
-
-            const response = await fetch('/upload', {
-                method: 'POST',
-                body: formData
-            });
-
-            const result = await response.json();
-            document.getElementById('pgnOutput').textContent = result.pgn || 'Error processing image';
+            
+            // Show loading indicator
+            document.getElementById('loadingIndicator').style.display = 'block';
+            
+            // Clear previous results
+            document.getElementById('pgnOutput').textContent = '';
+            document.getElementById('extractedText').textContent = '';
+            document.getElementById('cleanedText').textContent = '';
+            document.getElementById('notationSystem').textContent = '';
+            document.getElementById('parsedMoves').textContent = '';
+            
+            // Create form data from the form inputs
+            const formData = new FormData(this);
+            
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                // Hide loading indicator
+                document.getElementById('loadingIndicator').style.display = 'none';
+                
+                if (result.error) {
+                    // Display error
+                    document.getElementById('pgnOutput').innerHTML = `<span class="error">Error: ${result.error}</span>`;
+                } else {
+                    // Display PGN
+                    document.getElementById('pgnOutput').textContent = result.pgn || 'No PGN generated';
+                    
+                    // Populate debug information
+                    if (result.debug) {
+                        document.getElementById('extractedText').textContent = result.debug.extracted_text || '';
+                        document.getElementById('cleanedText').textContent = result.debug.cleaned_text || '';
+                        document.getElementById('notationSystem').textContent = result.debug.notation_system || '';
+                        document.getElementById('parsedMoves').textContent = JSON.stringify(result.debug.moves, null, 2) || '[]';
+                    }
+                }
+            } catch (error) {
+                // Hide loading indicator
+                document.getElementById('loadingIndicator').style.display = 'none';
+                
+                // Display error
+                document.getElementById('pgnOutput').innerHTML = `<span class="error">Error: ${error.message}</span>`;
+            }
+        };
+        
+        // Toggle debug information
+        document.getElementById('toggleDebug').onclick = function() {
+            const debugSection = document.getElementById('debugSection');
+            const isVisible = debugSection.style.display === 'block';
+            debugSection.style.display = isVisible ? 'none' : 'block';
+            this.textContent = isVisible ? 'Show Debug Info' : 'Hide Debug Info';
         };
     </script>
 </body>
